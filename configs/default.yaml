@@ -1,0 +1,57 @@
+# MSCAR Configuration
+
+# Data settings
+data:
+  data_dir: "/path/to/TC_ERA5"
+  ibtracs_path: "/path/to/ibtracs.ALL.list.v04r00.csv"
+  stats_dir: "dataset/stats"
+
+  # year splits
+  train_years: [1980, 2017]
+  valid_years: [2018, 2018]
+  test_years: [2019, 2020]
+
+  # sequence settings
+  input_len: 4    # 24h history
+  output_len: 20  # 120h forecast
+  ir_size: 140
+  era5_size: 40
+
+# Model architecture
+model:
+  ir_size: 140
+  era5_size: 40
+  patch_size: 5
+  ir_channels: 1
+  era5_channels: 69
+  dim: 128
+  seq_dim: 2
+  seq_len: 4
+  pred_len: 20
+  depth: 3
+  heads: 4
+  mlp_dim: 32
+  dropout: 0.1
+  ar_hidden: 256
+
+# Training settings
+training:
+  batch_size: 26
+  epochs: 50
+  lr: 0.0001
+  weight_decay: 0.01
+  scheduler: cosine
+  warmup_epochs: 0
+  min_lr: 0.000001
+  clip_grad: 1.0
+  workers: 8
+  augment: true
+  use_lds: false
+
+# Logging
+logging:
+  output_dir: "outputs"
+  log_freq: 10
+  eval_freq: 1
+
+seed: 42
