@@ -1,16 +1,16 @@
-## [Remote Sensing 2025] MSCAR: Learning Spatiotemporal Causal Dependencies for Tropical Cyclone Intensity Forecasting with Multi-Source Data
+## [IEEE JSTARS 2026] MSCAR: Learning Spatiotemporal Dependencies for Tropical Cyclone Intensity Forecasting with Multi-Source Data
 
-> **Authors:** Lei Liu, Xinyu Wang, Kang Chen, Xiaoning Yu, Tao Han, Bin Li, Lei Bai.
+> **Authors:** Lei Liu, Xinyu Wang, Hongwei Zhao, Kang Chen, Xiaoning Yu, Tao Han, Bin Li, Lei Bai.
 
 ## 1. Abstract
 
-Accurate prediction of tropical cyclone (TC) intensity is essential for effective disaster mitigation. Existing methods mainly rely on limited spatiotemporal information from ERA5 and often overlook the spatiotemporal causal dependencies among physical variables, which restricts their ability to capture the full spatial and temporal patterns needed for intensity forecasting. To address these limitations, we propose the Multi-modal Multi-Scale Causal AutoRegressive (MSCAR) model, the first approach to combine spatiotemporal causal dependency modeling with large-scale multi-modal datasets for autoregressive prediction of global TC intensity. In addition, to fill the gap of a comprehensive dataset covering diverse spatial variables, we introduce the Satellite and ERA5-based Tropical Cyclone Dataset (SETCD), currently the longest and most complete global dataset for TCs. Experiments show that MSCAR outperforms existing methods, reducing forecast errors globally and regionally by up to 9.52% and 6.74%, respectively.
+Accurate prediction of tropical cyclone (TC) intensity is essential for effective disaster mitigation. Existing methods mainly rely on limited spatiotemporal information from ERA5 and overlook the spatiotemporal dependencies between historical intensity sequences and spatial environmental features, which restricts their ability to capture the full spatial and temporal patterns needed for intensity forecasting. To address these limitations, we propose the Multi-modal Multi-Scale Constrained AutoRegressive (MSCAR) model, the first approach to combine spatiotemporal dependency modeling with large-scale multi-modal datasets for autoregressive prediction of global TC intensity. In addition, to fill the gap of a comprehensive dataset covering diverse spatial variables, we introduce the Satellite and ERA5-based Tropical Cyclone Dataset (SETCD), currently the longest and most complete global dataset for TCs. Experiments show that MSCAR outperforms existing methods, reducing forecast errors globally and regionally by up to 9.52% and 6.74%, respectively.
 
 <p align="center">
   <img src="fig/MSCAR_new-1.png" width="90%">
 </p>
 
-**Figure 1.** The overall architecture of the MSCAR. The model forecasts the TC intensity *j* steps into the future based on the previous four time steps. (a) Encoder: This module acts as the feature extractor. Heterogeneous spatial data are processed and fused by the FPN to generate spatial tokens. (b) CC Attention: Tokens are fused where intensity tokens act as Queries to attend to spatial tokens as Key/Value, governed by a causal constraint. (c) AR Decoder: The hidden state is used to autoregressively predict future intensities.
+**Figure 1.** Overall architecture of MSCAR for forecasting TC intensity *j* steps ahead based on the previous four time steps. (a) Encoder: Heterogeneous spatial data are processed and fused by the FPN to generate spatial tokens, while historical intensity data is transformed into intensity tokens via a linear layer. (b) CC Attention: Intensity tokens serve as Queries attending to spatial tokens as Key/Value pairs under a temporal constraint, producing the initial hidden state. (c) AR Decoder: The state is used to autoregressively predict future intensities.
 
 ## 2. Requirements
 
@@ -84,7 +84,7 @@ python test.py --checkpoint outputs/best.pth \
   <img src="fig/singel_case_2018226N11245-1.png" width="90%">
 </p>
 
-**Figure 2.** Visual comparison of TC intensity forecasts for LANE (SID: 2018226N11245). "GT" represents the ground truth of TC intensity. "6h PRE" signifies the 6-hour forecast, while "12~24h PRE" denotes the forecast results for 12, 18, and 24 hours. TC LANE exhibits a distinct rapid intensification phase in its early stage, followed by complex oscillations.
+**Figure 2.** Visual comparison of TC intensity forecasts for LANE (SID: 2018226N11245). "GT" represents ground truth, "6h PRE" denotes the 6-hour forecast, and "12~24h PRE" denotes forecasts at 12, 18, and 24 hours. TC LANE exhibits a distinct RI phase in its early stage followed by complex oscillations, serving as a challenging test case for model robustness.
 
 <p align="center">
   <img src="fig/singel_case_2020244N25146-1.png" width="90%">
@@ -104,11 +104,11 @@ We appreciate the following open-sourced repositories for their valuable code ba
 If you find our work useful in your research, please consider citing:
 
 ```bibtex
-@article{mscar2025,
-  title={Learning Spatiotemporal Causal Dependencies for Tropical Cyclone Intensity Forecasting with Multi-Source Data},
-  author={Liu, Lei and Wang, Xinyu and Chen, Kang and Yu, Xiaoning and Han, Tao and Li, Bin and Bai, Lei},
-  journal={Remote Sensing},
-  year={2025}
+@article{mscar2026,
+  title={Learning Spatiotemporal Dependencies for Tropical Cyclone Intensity Forecasting with Multi-Source Data},
+  author={Liu, Lei and Wang, Xinyu and Zhao, Hongwei and Chen, Kang and Yu, Xiaoning and Han, Tao and Li, Bin and Bai, Lei},
+  journal={IEEE Journal of Selected Topics in Applied Earth Observations and Remote Sensing},
+  year={2026}
 }
 ```
 
