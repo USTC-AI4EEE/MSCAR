@@ -4,7 +4,7 @@
 
 ## 1. Abstract
 
-Accurate prediction of tropical cyclone (TC) intensity is essential for effective disaster mitigation. Existing methods mainly rely on limited spatiotemporal information from ERA5 and overlook the spatiotemporal dependencies between historical intensity sequences and spatial environmental features, which restricts their ability to capture the full spatial and temporal patterns needed for intensity forecasting. To address these limitations, we propose the Multi-modal Multi-Scale Constrained AutoRegressive (MSCAR) model, the first approach to combine spatiotemporal dependency modeling with large-scale multi-modal datasets for autoregressive prediction of global TC intensity. In addition, to fill the gap of a comprehensive dataset covering diverse spatial variables, we introduce the Satellite and ERA5-based Tropical Cyclone Dataset (SETCD), currently the longest and most complete global dataset for TCs. Experiments show that MSCAR outperforms existing methods, reducing forecast errors globally and regionally by up to 9.52% and 6.74%, respectively.
+Accurate prediction of tropical cyclone (TC) intensity is essential for effective disaster mitigation. Existing methods mainly rely on limited spatiotemporal information from ERA5 and overlook the spatiotemporal dependencies between historical intensity sequences and spatial environmental features, which restricts their ability to capture the full spatial and temporal patterns needed for intensity forecasting. To address these limitations, we propose the Multi-modal Multi-Scale Constrained AutoRegressive (MSCAR) model, the first approach to combine spatiotemporal dependency modeling with large-scale multi-modal datasets for autoregressive prediction of global TC intensity. In addition, to fill the gap of a comprehensive dataset covering diverse spatial variables, we introduce the Multi-Source Satellite and ERA5-based Tropical Cyclone Dataset (MSETCD), currently the longest and most complete global dataset for TCs. Experiments show that MSCAR outperforms existing methods, reducing forecast errors globally and regionally by up to 9.52% and 6.74%, respectively.
 
 <p align="center">
   <img src="fig/MSCAR_new-1.png" width="90%">
@@ -27,13 +27,13 @@ tensorboard>=2.10.0
 
 ## 3. Dataset
 
-We introduce the Satellite and ERA5-based Tropical Cyclone Dataset (SETCD), a comprehensive global TC dataset for intensity forecasting research.
+We introduce the Multi-Source Satellite and ERA5-based Tropical Cyclone Dataset (MSETCD), a comprehensive global TC dataset for intensity forecasting research.
 
-**Download:** [Baidu Netdisk](https://pan.baidu.com/s/1TH0_-PBMeKWceH0HAv0FzA?pwd=bvwm#list/path=%2F) (Code: bvwm)
+**Download:** [Baidu Netdisk](https://pan.baidu.com/s/1pORYl7Hm2LMeU4psytb30A?pwd=3in5) (Code: 3in5)
 
 ### Comparison with Existing Datasets
 
-|                          | **SETCD**                              | Digital Typhoon       | HURSAT          | TCIR            |
+|                          | **MSETCD**                              | Digital Typhoon       | HURSAT          | TCIR            |
 |--------------------------|:--------------------------------------:|:---------------------:|:---------------:|:---------------:|
 | Temporal coverage        | 1980–2022                              | 1978–2022             | 1978–2015       | 2003–2017       |
 | Temporal resolution      | 3 hours                                | 1 hour                | 3 hours         | 3 hours         |
