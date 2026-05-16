@@ -1,6 +1,6 @@
 ## [IEEE JSTARS 2026] MSCAR: Learning Spatiotemporal Dependencies for Tropical Cyclone Intensity Forecasting with Multi-Source Data
 
-> **Authors:** Lei Liu, Xinyu Wang, Hongwei Zhao, Kang Chen, Xiaoning Yu, Tao Han, Bin Li, Lei Bai.
+> **Authors:** Lei Liu, Hongwei Zhao, Xinyu Wang,  Kang Chen, Xiaoning Yu, Tao Han, Bin Li, Lei Bai.
 
 ## 1. Abstract
 
