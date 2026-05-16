@@ -4,7 +4,7 @@
 
 ## 1. Abstract
 
-Accurate prediction of tropical cyclone (TC) intensity is essential for effective disaster mitigation. Existing methods mainly rely on limited spatiotemporal information from ERA5 and overlook the spatiotemporal dependencies between historical intensity sequences and spatial environmental features, which restricts their ability to capture the full spatial and temporal patterns needed for intensity forecasting. To address these limitations, we propose the Multi-modal Multi-Scale Constrained AutoRegressive (MSCAR) model, the first approach to combine spatiotemporal dependency modeling with large-scale multi-modal datasets for autoregressive prediction of global TC intensity. In addition, to fill the gap of a comprehensive dataset covering diverse spatial variables, we introduce the Multi-Source Satellite and ERA5-based Tropical Cyclone Dataset (MSETCD), currently the longest and most complete global dataset for TCs. Experiments show that MSCAR outperforms existing methods, reducing forecast errors globally and regionally by up to 9.52% and 6.74%, respectively.
+Accurate prediction of tropical cyclone (TC) intensity is essential for effective disaster mitigation. Existing methods mainly rely on limited spatiotemporal information from ERA5 and overlook the spatiotemporal dependencies between historical intensity sequences and spatial environmental features, which restricts their ability to capture the full spatial and temporal patterns needed for intensity forecasting. To address these limitations, we propose the Multi-source Multi-Scale Constrained AutoRegressive (MSCAR) model, the first approach to combine spatiotemporal dependency modeling with large-scale multi-source datasets for autoregressive prediction of global TC intensity. In addition, to fill the gap of a comprehensive dataset covering diverse spatial variables, we introduce the Multi-Source Satellite and ERA5-based Tropical Cyclone Dataset (MSETCD), currently the longest and most complete global dataset for TCs. Experiments show that MSCAR outperforms existing methods, reducing forecast errors globally and regionally by up to 9.52% and 6.74%, respectively. The dataset and source code are openly available at https://github.com/USTC-AI4EEE/MSCAR.
 
 <p align="center">
   <img src="fig/MSCAR_new-1.png" width="90%">
@@ -33,16 +33,16 @@ We introduce the Multi-Source Satellite and ERA5-based Tropical Cyclone Dataset 
 
 ### Comparison with Existing Datasets
 
-|                          | **MSETCD**                              | Digital Typhoon       | HURSAT          | TCIR            |
-|--------------------------|:--------------------------------------:|:---------------------:|:---------------:|:---------------:|
-| Temporal coverage        | 1980–2022                              | 1978–2022             | 1978–2015       | 2003–2017       |
-| Temporal resolution      | 3 hours                                | 1 hour                | 3 hours         | 3 hours         |
-| Spatial coverage         | Global                                 | Western North Pacific | Global          | Global          |
-| Spatial resolution       | ~8 km (sat) / ~30 km (ERA5)            | ~5 km                 | ~8 km           | ~8 km           |
-| Image coverage (pixels)  | 572×572 (sat) / 160×160 (ERA5)         | 512×512               | 301×301         | 201×201         |
-| Variables                | IR, WV, VIS, **ERA5 (69 vars)**        | IR                    | IR, WV, VIS, NIR| IR, WV, VIS, PMW|
-| TCs                      | **4,668**                              | 1,099                 | 3,946           | 1,285           |
-| Frames                   | **282,505**                            | 189,364               | 237,516         | 70,501          |
+|                         | **MSETCD**                      | Digital Typhoon       | HURSAT           | TCIR             |
+| ----------------------- |:-------------------------------:|:---------------------:|:----------------:|:----------------:|
+| Temporal coverage       | 1980–2022                       | 1978–2022             | 1978–2015        | 2003–2017        |
+| Temporal resolution     | 3 hours                         | 1 hour                | 3 hours          | 3 hours          |
+| Spatial coverage        | Global                          | Western North Pacific | Global           | Global           |
+| Spatial resolution      | ~8 km (sat) / ~30 km (ERA5)     | ~5 km                 | ~8 km            | ~8 km            |
+| Image coverage (pixels) | 572×572 (sat) / 160×160 (ERA5)  | 512×512               | 301×301          | 201×201          |
+| Variables               | IR, WV, VIS, **ERA5 (69 vars)** | IR                    | IR, WV, VIS, NIR | IR, WV, VIS, PMW |
+| TCs                     | **4,668**                       | 1,099                 | 3,946            | 1,285            |
+| Frames                  | **282,505**                     | 189,364               | 237,516          | 70,501           |
 
 ### Additional Data Sources
 
@@ -104,12 +104,16 @@ We appreciate the following open-sourced repositories for their valuable code ba
 If you find our work useful in your research, please consider citing:
 
 ```bibtex
-@article{mscar2026,
-  title={Learning Spatiotemporal Dependencies for Tropical Cyclone Intensity Forecasting with Multi-Source Data},
-  author={Liu, Lei and Wang, Xinyu and Zhao, Hongwei and Chen, Kang and Yu, Xiaoning and Han, Tao and Li, Bin and Bai, Lei},
-  journal={IEEE Journal of Selected Topics in Applied Earth Observations and Remote Sensing},
-  year={2026}
-}
+@ARTICLE{11519530,
+  author={Liu, Lei and Zhao, Hongwei and Wang, Xinyu and Chen, Kang and Yu, Xiaoning and Han, Tao and Li, Bin and Bai, Lei},
+  journal={IEEE Journal of Selected Topics in Applied Earth Observations and Remote Sensing}, 
+  title={Learning Spatiotemporal Dependencies for Tropical Cyclone Intensity Forecasting with Multi-Source Data}, 
+  year={2026},
+  volume={},
+  number={},
+  pages={1-15},
+  keywords={Modeling;Forecasting;Timing;Tropical cyclones;Satellites;Argon;Training;Long short term memory;Accuracy;Meteorology;Tropical cyclone intensity;multi-source;tropical cyclone dataset;deep learning;autoregressive forecasting},
+  doi={10.1109/JSTARS.2026.3692673}}
 ```
 
 If you have any problems, contact me via liulei13@ustc.edu.cn.
