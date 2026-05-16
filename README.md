@@ -2,6 +2,8 @@
 
 > **Authors:** Lei Liu, Hongwei Zhao, Xinyu Wang,  Kang Chen, Xiaoning Yu, Tao Han, Bin Li, Lei Bai.
 
+> **Paper:** https://ieeexplore.ieee.org/document/11519530.
+
 ## 1. Abstract
 
 Accurate prediction of tropical cyclone (TC) intensity is essential for effective disaster mitigation. Existing methods mainly rely on limited spatiotemporal information from ERA5 and overlook the spatiotemporal dependencies between historical intensity sequences and spatial environmental features, which restricts their ability to capture the full spatial and temporal patterns needed for intensity forecasting. To address these limitations, we propose the Multi-source Multi-Scale Constrained AutoRegressive (MSCAR) model, the first approach to combine spatiotemporal dependency modeling with large-scale multi-source datasets for autoregressive prediction of global TC intensity. In addition, to fill the gap of a comprehensive dataset covering diverse spatial variables, we introduce the Multi-Source Satellite and ERA5-based Tropical Cyclone Dataset (MSETCD), currently the longest and most complete global dataset for TCs. Experiments show that MSCAR outperforms existing methods, reducing forecast errors globally and regionally by up to 9.52% and 6.74%, respectively. The dataset and source code are openly available at https://github.com/USTC-AI4EEE/MSCAR.
