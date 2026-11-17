@@ -1,0 +1,54 @@
+# MSCAR 120h (N=4 inputs, M=20 x 6h outputs), initialized from the 24h weights
+# MSCAR 120h（输入 N=4，输出 M=20 x 6h），以 24h 权重初始化
+seed: 42
+checkpoint: checkpoints/mscar_120h.pth     # trained weights / 训练好的权重
+
+model:
+  ir_size: [140, 140]                      # satellite IR patch / 卫星红外裁剪
+  era5_size: [40, 40]                      # ERA5 patch / ERA5 裁剪
+  patch_size: [5, 5]                       # ViT patch, 1079 tokens per step / 每步 1079 个 token
+  ir_ch: 1
+  era5_ch: 69                              # 4 surface + 5 x 13 levels / 4 个地面变量 + 5 x 13 层
+  dim: 128
+  seq_dim: 2                               # [MSW, MSLP]
+  seq_len: 4                               # N
+  pred_len: 20                             # M
+  depth: 3
+  heads: 4
+  mlp_dim: 32
+  dropout: 0.1
+  ar_hidden: 256
+
+data:
+  train_cache: data/train_120h             # 1980-2017
+  evaluation_cache: data/evaluation_120h   # 2018 valid, 2019-2020 test
+
+training:
+  init_checkpoint: checkpoints/mscar_24h.pth
+  epochs: 20
+  patience: 5                              # early stopping on 2018 / 按 2018 验证集早停
+  loss: mae
+  micro_batch_size: 8                      # batch size 8 per GPU / 每卡 batch size 8
+  accumulate: 1                            # 8 GPUs (RTX 4090) / 8 张 RTX 4090
+  optimizer: adamw
+  lr: 1.0e-05
+  scheduler: cosine
+  min_lr: 1.0e-06
+  betas: [0.5, 0.999]
+  eps: 1.0e-09
+  weight_decay: 0.01
+  l1_regularization: 1.0e-05
+  ema_decay: 0.999
+  ema_bn_reestimate: true
+  # Autoregressive, one 20-step rollout for all leads
+  # 自回归，一次 20 步预报覆盖全部时效
+  per_lead_forward: false
+  clip_grad: 1.0
+  augment: false
+  workers: 4
+  output_dir: outputs/mscar_120h
+
+evaluation:
+  split: test                              # 2019-2020
+  target_policy: available                 # per-lead observed targets / 各时效可用标签
+  output: results/mscar_120h_test.json
