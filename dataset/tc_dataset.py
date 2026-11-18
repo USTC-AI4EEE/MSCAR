@@ -1,423 +1,151 @@
 """
-Dataset for Tropical Cyclone Intensity Prediction
+Packed TC dataset for MSCAR (24h / 120h).
+MSCAR 打包后的热带气旋数据集（24h / 120h 通用）。
 
-Loads GRIDSAT IR satellite images and ERA5 reanalysis data with IBTrACS labels.
+Split / 数据划分:  train 1980-2017, valid 2018, test 2019-2020
 """
-
-import os
 import json
+from pathlib import Path
+
 import numpy as np
-import pandas as pd
 import torch
-from torch.utils.data import Dataset
-import torchvision.transforms as transforms
-import torchvision.transforms.functional as TF
-from datetime import datetime
-import random
+from torch.utils.data import Dataset, Sampler
 
-from scipy.ndimage import gaussian_filter1d
-from scipy.signal.windows import triang
-from scipy.ndimage import convolve1d
+KNOT_TO_MS = 0.514444
+SPLITS = {'train': (1980, 2017), 'valid': (2018, 2018), 'test': (2019, 2020)}
+ERA5_SINGLE = ['u10', 'v10', 't2m', 'msl']
+ERA5_MULTI = ['z', 'q', 'u', 'v', 't']
+ERA5_LEVELS = [50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000]
 
 
-# ERA5 pressure levels
-PRESSURE_LEVELS = [1, 2, 3, 5, 7, 10, 20, 30, 50, 70, 100, 125, 150, 175, 200,
-                   225, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750,
-                   775, 800, 825, 850, 875, 900, 925, 950, 975, 1000]
-
-
-class RotateTransform:
-    """Rotate by one of the given angles"""
-    def __init__(self, angles):
-        self.angles = angles
-
-    def __call__(self, x):
-        angle = random.choice(self.angles)
-        return TF.rotate(x, angle)
+def load_normalization():
+    """Build the mean/std used by the trained checkpoints.
+    构建训练好的权重所用的均值/标准差。"""
+    root = Path(__file__).parent / 'stats'
+    read = lambda name: json.loads((root / name).read_text())
+    ir = read('GRIDSAT_TC_mean_std.json')
+    single, multi = read('ERA5_single_TC_mean_std.json'), read('ERA5_TC_mean_std.json')
+    # 4 single-level + 5 variables x 13 pressure levels = 69 ERA5 channels
+    # 4 个单层变量 + 5 个变量 x 13 个气压层 = 69 个 ERA5 通道
+    era5_mean = [single['mean'][v] for v in ERA5_SINGLE]
+    era5_std = [single['std'][v] for v in ERA5_SINGLE]
+    for v in ERA5_MULTI:
+        for level in ERA5_LEVELS:
+            era5_mean.append(multi['mean'][v][str(level)])
+            era5_std.append(multi['std'][v][str(level)])
+    # Intensity labels: [wind (kt), pressure (hPa)]
+    # 强度标签：[风速 (kt), 气压 (hPa)]
+    label = read('legacy/TCIR_mean_std.json')['label']
+    return dict(ir_mean=[ir['mean']['irwin_cdr']], ir_std=[ir['std']['irwin_cdr']],
+                era5_mean=era5_mean, era5_std=era5_std,
+                label_mean=[label['mean'][i] for i in (3, 5)],
+                label_std=[label['std'][i] for i in (3, 5)], profile='legacy')
 
 
 class TCDataset(Dataset):
     """
-    TC Dataset loading satellite IR and ERA5 data.
-
-    Expected data structure:
-        data_dir/
-            {year}/
-                {tc_id}/
-                    {timestamp}/
-                        GRIDSAT_data.npy  # (3, H, W) satellite channels
-                        ERA5_data.npy     # (C, H, W) atmospheric variables
-
-    Args:
-        data_dir: root directory containing TC data
-        ibtracs_path: path to IBTrACS CSV file
-        split: 'train', 'valid', or 'test'
-        years: dict with year ranges for each split
-        input_len: number of input time steps
-        output_len: number of output time steps
-        ir_size: GRIDSAT crop size
-        era5_size: ERA5 crop size
-        augment: whether to use rotation augmentation
+    Returns (ir, era5, history, target, index):
+      ir      (T, 1, 140, 140)   past IR images
+      era5    (T, 69, 40, 40)    past ERA5 fields
+      history (T, 2)             past intensity (normalized)
+      target  (L, 2)             future intensity (normalized, NaN if missing)
+    返回 (ir, era5, history, target, index)：
+      ir      过去 T 步红外图像；era5 过去 T 步 ERA5 场；
+      history 过去强度（归一化）；target 未来强度（归一化，缺失为 NaN）。
     """
 
-    def __init__(self, data_dir, ibtracs_path, split='train', years=None,
-                 input_len=4, output_len=4, ir_size=140, era5_size=40,
-                 augment=False, use_lds=False, stats_dir=None, **kwargs):
+    def __init__(self, cache, split, stats, output_len=None, target_policy='complete',
+                 augment=False, nan_threshold=0.01, years=None, basins=None):
+        root = Path(cache)
+        if not (root / 'COMPLETE.json').is_file():
+            raise FileNotFoundError(f'Incomplete cache, run tools/prepare_data.py first: {root}')
+        self.meta = json.loads((root / 'metadata.json').read_text())
+        frame_cache = Path(self.meta.get('frame_cache', '.'))
+        self.frame_root = frame_cache if frame_cache.is_absolute() else (root / frame_cache).resolve()
+        self.input_len = int(self.meta['input_len'])
+        self.output_len = int(output_len or self.meta['output_len'])
+        if not 1 <= self.output_len <= int(self.meta['output_len']):
+            raise ValueError('output_len exceeds the prepared horizon')
+        if target_policy not in ('complete', 'available'):
+            raise ValueError('target_policy must be complete or available')
+        self.split, self.target_policy = split, target_policy
 
-        self.data_dir = data_dir
-        self.split = split
-        self.input_len = input_len
-        self.output_len = output_len
-        self.window_size = input_len + output_len
-        self.ir_size = ir_size
-        self.era5_size = era5_size
-        self.use_lds = use_lds
+        # Sample selection: year split, IR quality, finite ERA5, legacy cohort
+        # 样本筛选：年份划分、红外缺测率、ERA5 有限值、原始样本集
+        sample_years = np.array(self.meta['years'])
+        lo, hi = SPLITS[split]
+        indices = np.load(root / 'indices.npy')
+        rates = np.load(self.frame_root / 'ir_nan_rate.npy')
+        finite = np.load(self.frame_root / 'era5_finite.npy')
+        valid = ((sample_years >= lo) & (sample_years <= hi)
+                 & (rates[indices] <= nan_threshold).all(1) & finite[indices].all(1)
+                 & np.load(root / 'legacy_eligible.npy'))
+        if years is not None:
+            valid &= np.isin(sample_years, years)
+        if basins is not None:
+            valid &= np.isin(self.meta['basins'], basins)
 
-        # default year ranges
-        if years is None:
-            years = {
-                'train': range(1980, 2018),
-                'valid': range(2018, 2019),
-                'test': range(2019, 2021),
-            }
-        self.years = years[split]
-
-        # variable configuration
-        self.single_vars = kwargs.get('single_vars', ['u10', 'v10', 't2m', 'msl'])
-        self.multi_vars = kwargs.get('multi_vars', ['z', 'q', 'u', 'v', 't'])
-        self.levels = kwargs.get('levels', [50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000])
-        self.label_vars = kwargs.get('label_vars', ['USA_WIND', 'USA_PRES'])
-        self.basins = kwargs.get('basins', ['EP', 'NA', 'NI', 'SA', 'SI', 'SP', 'WP'])
-
-        # build variable index mapping
-        self.var_idx = self._build_var_index()
-
-        # load normalization stats
-        self.stats_dir = stats_dir or os.path.join(os.path.dirname(__file__), 'stats')
-        self._load_stats()
-
-        # load IBTrACS and build sample list
-        self.samples = self._build_samples(ibtracs_path)
-        print(f"[{split}] loaded {len(self.samples)} samples")
-
-        # data augmentation (4x rotation for training)
+        labels = np.load(root / 'labels.npy')[:, :self.input_len + self.output_len]
+        future = np.isfinite(labels[:, self.input_len:])
+        # complete: every lead observed; available: at least one lead observed
+        # complete：所有时效都有观测；available：至少一个时效有观测
+        valid &= future.all((1, 2)) if target_policy == 'complete' else future.any((1, 2))
+        self.selection = np.flatnonzero(valid)
+        if not len(self.selection):
+            raise ValueError(f'No {split} samples in {cache}')
+        self.indices, self.labels = indices[self.selection], labels[self.selection]
         self.augment = augment and split == 'train'
-        self._setup_transforms()
-        if self.augment:
-            self._apply_augmentation()
 
-        # label distribution smoothing
-        if use_lds and split == 'train':
-            self._setup_lds(kwargs.get('lds_config', {}))
-
-    def _build_var_index(self):
-        """Build mapping from variable name to channel index"""
-        idx = {}
-        i = 0
-        for v in self.single_vars:
-            idx[v] = i
-            i += 1
-        for v in self.multi_vars:
-            idx[v] = {}
-            for h in self.levels:
-                idx[v][h] = i
-                i += 1
-        return idx
-
-    def _load_stats(self):
-        """Load mean/std for normalization"""
-        # defaults in case files don't exist
-        self.ir_mean = torch.tensor([260.0])
-        self.ir_std = torch.tensor([30.0])
-        self.era5_mean = torch.zeros(len(self.single_vars) + len(self.multi_vars) * len(self.levels))
-        self.era5_std = torch.ones_like(self.era5_mean)
-        self.label_mean = torch.tensor([50.0, 990.0])
-        self.label_std = torch.tensor([28.0, 21.0])
-
-        # try loading from files
-        ir_path = os.path.join(self.stats_dir, 'GRIDSAT_TC_mean_std.json')
-        if os.path.exists(ir_path):
-            with open(ir_path) as f:
-                stats = json.load(f)
-            self.ir_mean = torch.tensor([stats['mean'].get('irwin_cdr', 260.0)])
-            self.ir_std = torch.tensor([stats['std'].get('irwin_cdr', 30.0)])
-
-        label_path = os.path.join(self.stats_dir, 'IBTrACS_intensity_TC_mean_std.json')
-        if os.path.exists(label_path):
-            with open(label_path) as f:
-                stats = json.load(f)
-            means = [stats['mean'].get(v, 50.0) for v in self.label_vars]
-            stds = [stats['std'].get(v, 28.0) for v in self.label_vars]
-            self.label_mean = torch.tensor(means)
-            self.label_std = torch.tensor(stds)
-
-        single_path = os.path.join(self.stats_dir, 'ERA5_single_TC_mean_std.json')
-        multi_path = os.path.join(self.stats_dir, 'ERA5_TC_mean_std.json')
-        if os.path.exists(single_path) and os.path.exists(multi_path):
-            with open(single_path) as f:
-                single_stats = json.load(f)
-            with open(multi_path) as f:
-                multi_stats = json.load(f)
-            means, stds = [], []
-            for v in self.single_vars:
-                means.append(single_stats['mean'].get(v, 0))
-                stds.append(single_stats['std'].get(v, 1))
-            for v in self.multi_vars:
-                for h in self.levels:
-                    means.append(multi_stats['mean'].get(v, {}).get(str(h), 0))
-                    stds.append(multi_stats['std'].get(v, {}).get(str(h), 1))
-            self.era5_mean = torch.tensor(means)
-            self.era5_std = torch.tensor(stds)
-
-    def _build_samples(self, ibtracs_path):
-        """Build list of valid samples from IBTrACS"""
-        df = pd.read_csv(ibtracs_path, low_memory=False)
-        samples = []
-
-        for year in self.years:
-            year_df = df[df['SEASON'] == str(year)]
-            tc_ids = year_df['SID'].unique()
-
-            for tc_id in tc_ids:
-                tc_df = year_df[year_df['SID'] == tc_id]
-                basin = tc_df['BASIN'].iloc[0]
-                if pd.isna(basin):
-                    basin = 'NA'
-                if basin not in self.basins:
-                    continue
-
-                # collect valid time points
-                times, labels = [], []
-                for _, row in tc_df.iterrows():
-                    iso_time = row['ISO_TIME']
-                    if iso_time[11:] not in ['00:00:00', '06:00:00', '12:00:00', '18:00:00']:
-                        continue
-
-                    # check data exists
-                    time_str = iso_time.replace(':', '_')
-                    data_path = os.path.join(self.data_dir, str(year), tc_id, time_str)
-                    if not os.path.exists(os.path.join(data_path, 'GRIDSAT_data.npy')):
-                        continue
-                    if not os.path.exists(os.path.join(data_path, 'ERA5_data.npy')):
-                        continue
-
-                    # check labels are valid
-                    label = []
-                    valid = True
-                    for v in self.label_vars:
-                        val = row[v]
-                        if pd.isna(val) or val == ' ':
-                            valid = False
-                            break
-                        try:
-                            label.append(float(val))
-                        except:
-                            valid = False
-                            break
-                    if not valid:
-                        continue
-
-                    times.append((iso_time, data_path))
-                    labels.append(label)
-
-                # create sliding windows
-                for i in range(len(times) - self.window_size + 1):
-                    window = times[i:i + self.window_size]
-                    window_labels = labels[i:i + self.window_size]
-
-                    # check 6h consecutive
-                    if not self._check_consecutive(window):
-                        continue
-
-                    inp_times = window[:self.input_len]
-                    out_times = window[self.input_len:]
-                    inp_labels = window_labels[:self.input_len]
-                    out_labels = window_labels[self.input_len:]
-
-                    samples.append({
-                        'input_paths': [t[1] for t in inp_times],
-                        'input_labels': inp_labels,
-                        'output_labels': out_labels,
-                    })
-
-        return samples
-
-    def _check_consecutive(self, times):
-        """Check if times are 6h apart"""
-        for i in range(len(times) - 1):
-            t1 = datetime.strptime(times[i][0], '%Y-%m-%d %H:%M:%S')
-            t2 = datetime.strptime(times[i + 1][0], '%Y-%m-%d %H:%M:%S')
-            if (t2 - t1).total_seconds() != 6 * 3600:
-                return False
-        return True
-
-    def _setup_transforms(self):
-        """Setup image transforms"""
-        self.ir_transform = transforms.CenterCrop(self.ir_size)
-        self.era5_transform = transforms.CenterCrop(self.era5_size)
-
-        if self.augment:
-            self.ir_transforms = {
-                0: transforms.Compose([transforms.CenterCrop(self.ir_size), RotateTransform([0])]),
-                90: transforms.Compose([transforms.CenterCrop(self.ir_size), RotateTransform([90])]),
-                180: transforms.Compose([transforms.CenterCrop(self.ir_size), RotateTransform([180])]),
-                270: transforms.Compose([transforms.CenterCrop(self.ir_size), RotateTransform([270])]),
-            }
-            self.era5_transforms = {
-                0: transforms.Compose([transforms.CenterCrop(self.era5_size), RotateTransform([0])]),
-                90: transforms.Compose([transforms.CenterCrop(self.era5_size), RotateTransform([90])]),
-                180: transforms.Compose([transforms.CenterCrop(self.era5_size), RotateTransform([180])]),
-                270: transforms.Compose([transforms.CenterCrop(self.era5_size), RotateTransform([270])]),
-            }
-
-    def _apply_augmentation(self):
-        """Quadruple dataset with rotations"""
-        n = len(self.samples)
-        self.angles = [0] * n + [90] * n + [180] * n + [270] * n
-        self.samples = self.samples * 4
-
-    def _setup_lds(self, config):
-        """Setup label distribution smoothing weights"""
-        reweight = config.get('reweight', 'sqrt_inv')
-        use_smooth = config.get('lds', False)
-        kernel = config.get('lds_kernel', 'gaussian')
-        ks = config.get('lds_ks', 5)
-        sigma = config.get('lds_sigma', 2)
-        min_label = config.get('min_label', [0, 850])
-        max_label = config.get('max_label', [200, 1030])
-
-        n_samples = len(self.samples) // (4 if self.augment else 1)
-        labels = np.array([s['output_labels'] for s in self.samples[:n_samples]])
-
-        self.weights = np.zeros((n_samples, self.output_len, len(self.label_vars)))
-        for t in range(self.output_len):
-            for v in range(len(self.label_vars)):
-                self.weights[:, t, v] = self._compute_weights(
-                    labels[:, t, v], reweight, min_label[v], max_label[v],
-                    use_smooth, kernel, ks, sigma
-                )
-
-        if self.augment:
-            self.weights = np.tile(self.weights, (4, 1, 1))
-
-    def _compute_weights(self, labels, reweight, min_val, max_val, smooth, kernel, ks, sigma):
-        """Compute sample weights for imbalanced regression"""
-        shifted = labels - min_val
-        max_bin = int(max_val - min_val)
-
-        counts = {i: 0 for i in range(max_bin)}
-        for l in shifted:
-            counts[min(max_bin - 1, int(l))] += 1
-
-        if reweight == 'sqrt_inv':
-            counts = {k: np.sqrt(v) for k, v in counts.items()}
-
-        per_label = [counts[min(max_bin - 1, int(l))] for l in shifted]
-
-        if smooth:
-            half_ks = (ks - 1) // 2
-            if kernel == 'gaussian':
-                base = [0.] * half_ks + [1.] + [0.] * half_ks
-                win = gaussian_filter1d(base, sigma)
-                win = win / win.max()
-            elif kernel == 'triang':
-                win = triang(ks)
-            else:
-                laplace = lambda x: np.exp(-abs(x) / sigma) / (2 * sigma)
-                win = [laplace(i) for i in range(-half_ks, half_ks + 1)]
-                win = np.array(win) / max(win)
-
-            smoothed = convolve1d([counts[i] for i in range(max_bin)], win, mode='constant')
-            per_label = [smoothed[min(max_bin - 1, int(l))] for l in shifted]
-
-        weights = [1.0 / x if x > 0 else 0 for x in per_label]
-        scale = len(weights) / sum(weights) if sum(weights) > 0 else 1
-        return [w * scale for w in weights]
-
-    def _load_ir(self, path):
-        """Load and normalize IR data"""
-        data = np.load(os.path.join(path, 'GRIDSAT_data.npy'))
-        data = data[[0]]  # use only first channel (irwin_cdr)
-        data = torch.from_numpy(data).float()
-        data = (data - self.ir_mean.view(-1, 1, 1)) / self.ir_std.view(-1, 1, 1)
-        data = torch.nan_to_num(data, nan=0.0)
-        return data
-
-    def _load_era5(self, path):
-        """Load and normalize ERA5 data"""
-        data = np.load(os.path.join(path, 'ERA5_data.npy'))
-
-        # select channels
-        idx = []
-        for v in self.single_vars:
-            idx.append(self.var_idx[v])
-        for v in self.multi_vars:
-            for h in self.levels:
-                idx.append(self.var_idx[v][h])
-        data = data[idx]
-
-        data = torch.from_numpy(data).float()
-        data = (data - self.era5_mean.view(-1, 1, 1)) / self.era5_std.view(-1, 1, 1)
-        return data
-
-    def get_meanstd(self):
-        """Return label mean/std for denormalization"""
-        return self.label_mean, self.label_std
+        self.ir = self.era5 = None
+        self.ir_mean = np.array(stats['ir_mean'], np.float32)[:, None, None]
+        self.ir_std = np.array(stats['ir_std'], np.float32)[:, None, None]
+        self.era5_mean = np.array(stats['era5_mean'], np.float32)[:, None, None]
+        self.era5_std = np.array(stats['era5_std'], np.float32)[:, None, None]
+        self.label_mean = torch.tensor(stats['label_mean'], dtype=torch.float32)
+        self.label_std = torch.tensor(stats['label_std'], dtype=torch.float32)
+        print(f'{split}: {len(self.selection)} windows, horizon={self.output_len}', flush=True)
 
     def __len__(self):
-        return len(self.samples)
+        # Augmentation adds 90/180/270-degree rotations
+        # 数据增强额外加入 90/180/270 度旋转
+        return len(self.indices) * (4 if self.augment else 1)
 
-    def __getitem__(self, idx):
-        sample = self.samples[idx]
+    def __getstate__(self):
+        # Memory maps are reopened inside each worker
+        # 内存映射在每个 worker 中重新打开
+        state = self.__dict__.copy()
+        state['ir'] = state['era5'] = None
+        return state
 
-        # load input data
-        ir_list, era5_list = [], []
-        for path in sample['input_paths']:
-            ir = self._load_ir(path)
-            era5 = self._load_era5(path)
+    def __getitem__(self, index):
+        n = len(self.indices)
+        rotation, index = divmod(index, n)
+        if self.ir is None:
+            self.ir = np.load(self.frame_root / 'ir.npy', mmap_mode='r')
+            self.era5 = np.load(self.frame_root / 'era5.npy', mmap_mode='r')
+        ids = self.indices[index]
+        ir = np.nan_to_num((np.array(self.ir[ids]) - self.ir_mean) / self.ir_std, nan=0., posinf=0., neginf=0.)
+        era5 = (np.array(self.era5[ids]) - self.era5_mean) / self.era5_std
+        if rotation:
+            ir = np.rot90(ir, rotation, axes=(-2, -1)).copy()
+            era5 = np.rot90(era5, rotation, axes=(-2, -1)).copy()
+        labels = (torch.from_numpy(self.labels[index]) - self.label_mean) / self.label_std
+        t = self.input_len
+        return torch.from_numpy(ir), torch.from_numpy(era5), labels[:t], labels[t:], index
 
-            # apply transforms
-            if self.augment:
-                angle = self.angles[idx]
-                ir = self.ir_transforms[angle](ir)
-                era5 = self.era5_transforms[angle](era5)
-            else:
-                ir = self.ir_transform(ir)
-                era5 = self.era5_transform(era5)
-
-            ir_list.append(ir)
-            era5_list.append(era5)
-
-        ir_data = torch.stack(ir_list)
-        era5_data = torch.stack(era5_list)
-
-        # labels
-        inp_label = torch.tensor(sample['input_labels']).float()
-        out_label = torch.tensor(sample['output_labels']).float()
-
-        # normalize labels
-        inp_label = (inp_label - self.label_mean) / self.label_std
-        out_label = (out_label - self.label_mean) / self.label_std
-
-        if self.use_lds and self.split == 'train':
-            weight = torch.tensor(self.weights[idx]).float()
-            return ir_data, era5_data, inp_label, out_label, weight
-
-        return ir_data, era5_data, inp_label, out_label
+    def get_meanstd(self):
+        return self.label_mean, self.label_std
 
 
-if __name__ == '__main__':
-    # test loading
-    ds = TCDataset(
-        data_dir='/storage/yuxiaoning/ERA5/TC_ERA5',
-        ibtracs_path='/storage/yuxiaoning/ERA5/ibtracs.ALL.list.v04r00.csv',
-        split='train',
-        years={'train': range(2011, 2012), 'valid': range(2018, 2019), 'test': range(2019, 2020)},
-    )
-    print(f"Dataset size: {len(ds)}")
-    if len(ds) > 0:
-        sample = ds[0]
-        print(f"IR shape: {sample[0].shape}")
-        print(f"ERA5 shape: {sample[1].shape}")
-        print(f"Input label shape: {sample[2].shape}")
-        print(f"Output label shape: {sample[3].shape}")
+class EvaluationSampler(Sampler):
+    """Shard evaluation data across ranks without repeating samples.
+    在多卡间切分评测数据，不重复采样。"""
+
+    def __init__(self, dataset, rank=0, world=1):
+        self.length, self.rank, self.world = len(dataset), rank, world
+
+    def __iter__(self):
+        return iter(range(self.rank, self.length, self.world))
+
+    def __len__(self):
+        return len(range(self.rank, self.length, self.world))

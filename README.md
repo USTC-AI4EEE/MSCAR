@@ -1,5 +1,7 @@
 ## [IEEE JSTARS 2026] MSCAR: Learning Spatiotemporal Dependencies for Tropical Cyclone Intensity Forecasting with Multi-Source Data
 
+[English](README.md) | [中文](README_zh.md)
+
 > **Authors:** Lei Liu, Hongwei Zhao, Xinyu Wang,  Kang Chen, Xiaoning Yu, Tao Han, Bin Li, Lei Bai.
 
 > **Paper:** https://ieeexplore.ieee.org/document/11519530.
@@ -54,30 +56,27 @@ We introduce the Multi-Source Satellite and ERA5-based Tropical Cyclone Dataset 
 
 ## 4. Usage
 
-Configure data paths in `configs/default.yaml`:
+Data preparation:
 
-```yaml
-data:
-  data_dir: "/path/to/TC_ERA5"
-  ibtracs_path: "/path/to/ibtracs.ALL.list.v04r00.csv"
+```bash
+python tools/prepare_data.py --data-dir /path/to/TC_datasets --ibtracs /path/to/ibtracs.ALL.list.v04r00.csv --begin-year 1980 --end-year 2017 --output data/train
+python tools/prepare_data.py --data-dir /path/to/TC_datasets --ibtracs /path/to/ibtracs.ALL.list.v04r00.csv --begin-year 2018 --end-year 2020 --output data/evaluation
+python tools/prepare_horizon.py --base-cache data/train --output data/train_120h --output-len 20
+python tools/prepare_horizon.py --base-cache data/evaluation --output data/evaluation_120h --output-len 20
 ```
 
 Training:
 
 ```bash
-# Single GPU
-python train.py --config configs/default.yaml
-
-# Multi-GPU
-torchrun --nproc_per_node=4 train.py --config configs/default.yaml
+torchrun --nproc_per_node=8 train.py --config configs/mscar_24h.yaml
+torchrun --nproc_per_node=8 train.py --config configs/mscar_120h.yaml
 ```
 
-Evaluation:
+Inference with the trained weights:
 
 ```bash
-python test.py --checkpoint outputs/best.pth \
-               --data_dir /path/to/TC_ERA5 \
-               --ibtracs_path /path/to/ibtracs.ALL.list.v04r00.csv
+python test.py --config configs/mscar_24h.yaml --checkpoint checkpoints/mscar_24h.pth
+python test.py --config configs/mscar_120h.yaml --checkpoint checkpoints/mscar_120h.pth
 ```
 
 ## 5. Results
